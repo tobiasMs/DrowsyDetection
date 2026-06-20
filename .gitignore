@@ -1,0 +1,27 @@
+# Folder tensorflow dan output visualisasi
+tensorflow/
+output_visualisasi/
+
+# Model hasil training (file besar)
+*.h5
+best_drowsy_model.h5
+
+# File hasil evaluasi & laporan
+evaluation_metrics.csv
+model_complexity.csv
+Laporan_Combined_Dataset.xlsx
+
+# Gambar/Plot hasil training (opsional, jika tidak ingin disimpan di Git)
+*.png
+
+# Python cache & virtual environment
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Konfigurasi editor
+.vscode/
+.idea/
+
