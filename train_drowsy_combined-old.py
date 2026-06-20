@@ -4,6 +4,7 @@ Drowsy Detection - Combined Dataset Training Script
 Arsitektur : MobileNetV2 + Bottleneck (Conv2D 256) + SE Block
 Dataset    : Original (250 drowsy + 250 nondrowsy) + Private (575 drowsy + 575 nondrowsy)
              → Total: 825 drowsy + 825 nondrowsy = 1650 gambar (sudah digabung 1 folder)
+Target     : Validasi accuracy >= 90%
 
 Struktur folder yang diharapkan:
     tensorflow/
@@ -303,7 +304,7 @@ def train_phase2(model, train_gen, val_gen, epochs: int,
                  save_path: str) -> tf.keras.callbacks.History:
     """
     Fase 2: Fine-tuning dengan learning rate kecil.
-    Hanya dijalankan jika fase 1 belum ada peningkatan akurasi
+    Hanya dijalankan jika fase 1 belum mencapai target accuracy.
     """
     print("\n" + "="*55)
     print("  FASE 2 — Fine-Tuning MobileNetV2 (Partial Unfreeze)")
@@ -375,9 +376,10 @@ def evaluate_model(model, X_val, y_val, class_names, val_datagen):
     print(sep)
 
     if acc >= 0.90:
-        print(f"\n  ✓ Accuracy = {acc*100:.2f}%")
+        print(f"\n  ✓ Target 90%+ TERCAPAI! (Accuracy = {acc*100:.2f}%)")
     else:
-        print(f"\n  ✗ Gap = {(0.90 - acc)*100:.2f}%")
+        print(f"\n  ✗ Belum mencapai 90%. Gap = {(0.90 - acc)*100:.2f}%")
+        print("    Tips: turunkan FINE_TUNE_AT atau perbanyak augmentasi.")
 
     # ── Confusion Matrix ──────────────────────────────────────
     cm = confusion_matrix(y_true, y_pred)
@@ -454,6 +456,8 @@ def plot_history(history_p1, history_p2=None):
     # ── Accuracy ──────────────────────────────
     ax1.plot(epochs_range, acc,  label='Train Accuracy', color='steelblue', linewidth=1.8)
     ax1.plot(epochs_range, vacc, label='Val Accuracy',   color='coral',     linewidth=1.8)
+    ax1.axhline(y=0.9, color='seagreen', linestyle='--', alpha=0.8,
+                linewidth=1.2, label='Target 90%')
     if phase_split:
         ax1.axvline(x=phase_split, color='gray', linestyle=':',
                     linewidth=1.2, label='Fine-tune start')
@@ -529,47 +533,16 @@ def generate_excel_report(X_eval, y_true, y_pred_probs, class_names,
 
         img_bgr = cv2.cvtColor(img_save, cv2.COLOR_RGB2BGR)
         gray    = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-        
-        # 1. Deteksi wajah dengan parameter default
-        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-        
-        # 2. Jika gagal, coba parameter yang lebih sensitif (karena resolusi 150x150 cukup kecil)
-        if len(faces) == 0:
-            faces = face_cascade.detectMultiScale(gray, 1.05, 2)
-            
-        # 3. Jika masih gagal, gunakan parameter sangat sensitif
-        if len(faces) == 0:
-            faces = face_cascade.detectMultiScale(gray, 1.02, 1)
-
-        # 4. Jika tetap tidak terdeteksi, buat bounding box fallback di bagian tengah gambar
-        # (Karena dataset sebagian besar adalah gambar wajah yang terpusat)
-        is_fallback = False
-        if len(faces) == 0:
-            h_img, w_img = img_bgr.shape[:2]
-            x = int(w_img * 0.15)
-            y = int(h_img * 0.15)
-            w = int(w_img * 0.7)
-            h = int(h_img * 0.7)
-            faces = [(x, y, w, h)]
-            is_fallback = True
+        faces   = face_cascade.detectMultiScale(gray, 1.1, 4)
 
         status = "DROWSY" if y_pred_excel == 1 else "NONDROWSY"
         color  = (0, 0, 255) if y_pred_excel == 1 else (0, 255, 0)
 
         for (x, y, w, h) in faces:
-            # Gambar bounding box
             cv2.rectangle(img_bgr, (x, y), (x+w, y+h), color, 2)
-            
-            # Berikan label tambahan [F] jika ini adalah box fallback
-            label_text = f"{status} {p_ensemble:.2f}"
-            if is_fallback:
-                label_text = f"*{status} {p_ensemble:.2f}"
-                
-            # Pastikan teks tidak keluar dari batas atas gambar
-            text_y = max(y - 8, 15)
-            cv2.putText(img_bgr, label_text,
-                        (x, text_y), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.4, color, 1)
+            cv2.putText(img_bgr, f"{status} {p_ensemble:.2f}",
+                        (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, color, 2)
             break
 
         file_name = f"sample_{i}_{status}.jpg"
@@ -785,7 +758,7 @@ def main():
         )
         history_p2 = train_phase2(model, train_gen, val_gen, EPOCHS // 2, MODEL_SAVE_PATH)
     else:
-        print("\n[INFO] Fine-tuning dilewati.")
+        print("\n[INFO] Target 90% tercapai di Fase 1, fine-tuning dilewati.")
 
     # ── Load model terbaik (dari checkpoint) ──
     model = tf.keras.models.load_model(MODEL_SAVE_PATH)
